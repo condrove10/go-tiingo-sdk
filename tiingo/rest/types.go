@@ -1,7 +1,6 @@
-package tiingo
+package rest
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -58,7 +57,7 @@ type PriceData struct {
 	SplitFactor float64 `json:"splitFactor"`
 }
 
-type IEXQuote struct {
+type IEXPrice struct {
 	Ticker            string  `json:"ticker"`
 	Timestamp         Time    `json:"timestamp"`
 	QuoteTimestamp    Time    `json:"quoteTimestamp"`
@@ -196,33 +195,4 @@ type FundamentalsDailyOptions struct {
 type SearchOptions struct {
 	Query string `url:"query,omitempty"`
 	Limit int    `url:"limit,omitempty"`
-}
-
-// --- WebSocket Specific Models ---
-
-type Response struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-// WebSocketMessage represents the generic wrapper for all incoming messages.
-type WebSocketMessage struct {
-	MessageType string          `json:"messageType"`
-	Service     string          `json:"service"`
-	Response    *Response       `json:"response"`
-	Data        json.RawMessage `json:"data"`
-}
-
-// SubscribeRequest is the payload for subscribing/unsubscribing.
-type SubscribeRequest struct {
-	EventName     string                 `json:"eventName"`
-	Authorization string                 `json:"authorization"`
-	EventData     map[string]interface{} `json:"eventData,omitempty"`
-}
-
-// SubscriptionConfirmation defines the structure of the subscription confirmation message.
-type SubscriptionConfirmation struct {
-	SubscriptionID int      `json:"subscriptionId"`
-	Tickers        []string `json:"tickers"`
-	ThresholdLevel int      `json:"thresholdLevel"`
 }

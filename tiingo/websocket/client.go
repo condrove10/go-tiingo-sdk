@@ -1,4 +1,4 @@
-package tiingo
+package websocket
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/condrove10/go-tiingo-sdk/tiingo/common"
 )
 
 // WebSocket client errors
@@ -263,7 +264,7 @@ func (c *WebsocketClient) readLoop() {
 
 			c.updateLastMessageTimestamp()
 
-			var message WebSocketMessage
+			var message common.WebSocketMessage
 			if err := json.Unmarshal(msg, &message); err != nil {
 				c.notifyError(fmt.Errorf("failed to unmarshal message: %w", err))
 				continue
@@ -271,7 +272,7 @@ func (c *WebsocketClient) readLoop() {
 
 			switch message.MessageType {
 			case "I":
-				var conf SubscriptionConfirmation
+				var conf common.SubscriptionConfirmation
 				if err := json.Unmarshal(message.Data, &conf); err != nil {
 					c.notifyError(fmt.Errorf("failed to unmarshal subscription confirmation: %w", err))
 					continue
@@ -322,7 +323,7 @@ func (c *WebsocketClient) healthcheckLoop() {
 }
 
 // Subscribe subscribes to a ticker with a given handler.
-func (c *WebsocketClient) Subscribe(ticker string, handler func(message []byte, err error)) error {
+func (c *WebsocketClient) subscribe(ticker string, handler func(message []byte, err error)) error {
 	select {
 	case <-c.ctx.Done():
 		return c.ctx.Err()
@@ -340,7 +341,7 @@ func (c *WebsocketClient) Subscribe(ticker string, handler func(message []byte, 
 		return ErrAlreadySubscribed
 	}
 
-	req := SubscribeRequest{
+	req := common.SubscribeRequest{
 		EventName:     "subscribe",
 		Authorization: c.apiKey,
 		EventData: map[string]interface{}{
@@ -365,6 +366,98 @@ func (c *WebsocketClient) Subscribe(ticker string, handler func(message []byte, 
 	return nil
 }
 
+func (c *WebsocketClient) Subscribe(ticker string, handler func(message []byte, err error)) error {
+	return c.subscribe(ticker, handler)
+}
+
+func (c *WebsocketClient) SubscribeCryptoEndpointWithHandlers(ticker string, cryptoQuoteHandler func(msg *CryptoQuote, err error), cryptoTradeHandler func(msg *CryptoTrade, err error)) error {
+	if c.endpoint != EndpointTypeCrypto {
+		return fmt.Errorf("client not configured for crypto endpoint")
+	}
+
+	return c.subscribe(ticker, func(message []byte, err error) {
+		if err != nil {
+			cryptoQuoteHandler(nil, err)
+			cryptoTradeHandler(nil, err)
+			return
+		}
+
+		res, err := ParseMessage(message)
+		if err != nil {
+			cryptoQuoteHandler(nil, err)
+			cryptoTradeHandler(nil, err)
+			return
+		}
+
+		switch msg := res.(type) {
+		case *CryptoQuote:
+			cryptoQuoteHandler(msg, nil)
+		case *CryptoTrade:
+			cryptoTradeHandler(msg, nil)
+		default:
+			cryptoQuoteHandler(nil, fmt.Errorf("unknown message type"))
+			cryptoTradeHandler(nil, fmt.Errorf("unknown message type"))
+		}
+	})
+}
+
+func (c *WebsocketClient) SubscribeIEXEndpointWithHandlers(ticker string, iexQuoteHandler func(msg *IEXQuote, err error), iexTradeHandler func(msg *IEXTrade, err error)) error {
+	if c.endpoint != EndpointTypeIEX {
+		return fmt.Errorf("client not configured for IEX endpoint")
+	}
+
+	return c.subscribe(ticker, func(message []byte, err error) {
+		if err != nil {
+			iexQuoteHandler(nil, err)
+			iexTradeHandler(nil, err)
+			return
+		}
+
+		res, err := ParseMessage(message)
+		if err != nil {
+			iexQuoteHandler(nil, err)
+			iexTradeHandler(nil, err)
+			return
+		}
+
+		switch msg := res.(type) {
+		case *IEXQuote:
+			iexQuoteHandler(msg, nil)
+		case *IEXTrade:
+			iexTradeHandler(msg, nil)
+		default:
+			iexQuoteHandler(nil, fmt.Errorf("unknown message type"))
+			iexTradeHandler(nil, fmt.Errorf("unknown message type"))
+		}
+	})
+}
+
+func (c *WebsocketClient) SubscribeForexEndpointWithHandler(ticker string, forexQuoteHandler func(msg *ForexQuote, err error)) error {
+	if c.endpoint != EndpointTypeForex {
+		return fmt.Errorf("client not configured for forex endpoint")
+	}
+
+	return c.subscribe(ticker, func(message []byte, err error) {
+		if err != nil {
+			forexQuoteHandler(nil, err)
+			return
+		}
+
+		res, err := ParseMessage(message)
+		if err != nil {
+			forexQuoteHandler(nil, err)
+			return
+		}
+
+		switch msg := res.(type) {
+		case *ForexQuote:
+			forexQuoteHandler(msg, nil)
+		default:
+			forexQuoteHandler(nil, fmt.Errorf("unknown message type"))
+		}
+	})
+}
+
 // Unsubscribe removes a subscription for a ticker.
 func (c *WebsocketClient) Unsubscribe(ticker string) error {
 	select {
@@ -384,7 +477,7 @@ func (c *WebsocketClient) Unsubscribe(ticker string) error {
 		return fmt.Errorf("not subscribed to %s", ticker)
 	}
 
-	req := SubscribeRequest{
+	req := common.SubscribeRequest{
 		EventName:     "unsubscribe",
 		Authorization: c.apiKey,
 		EventData:     map[string]interface{}{"tickers": []string{ticker}},

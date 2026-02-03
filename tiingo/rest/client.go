@@ -1,4 +1,4 @@
-package tiingo
+package rest
 
 import (
 	"context"
@@ -212,10 +212,10 @@ func (c *RestClient) GetEndOfDayPrices(ctx context.Context, ticker string, opts 
 }
 
 // GetIEXRealTimePrices retrieves IEX real-time price data.
-func (c *RestClient) GetIEXRealTimePrices(ctx context.Context, opts *IEXRealTimePricesOptions) ([]*IEXQuote, error) {
+func (c *RestClient) GetIEXRealTimePrices(ctx context.Context, opts *IEXRealTimePricesOptions) ([]*IEXPrice, error) {
 	path := fmt.Sprintf("/iex/%s", opts.Tickers)
 	opts.Tickers = ""
-	var quotes []*IEXQuote
+	var quotes []*IEXPrice
 	err := c.request(ctx, http.MethodGet, path, nil, opts, &quotes)
 	if err != nil {
 		return nil, err

@@ -168,5 +168,6 @@ dist
 .pnp.*
 
 **/test*
+**/example*
 **/log*
 !pkg/**
