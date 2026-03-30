@@ -1,4 +1,4 @@
-package common
+package tiingo
 
 import (
 	"encoding/json"

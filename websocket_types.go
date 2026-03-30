@@ -1,4 +1,4 @@
-package websocket
+package tiingo
 
 import (
 	"encoding/json"

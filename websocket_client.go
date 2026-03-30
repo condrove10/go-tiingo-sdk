@@ -1,15 +1,15 @@
-package websocket
+package tiingo
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/condrove10/go-tiingo-sdk/tiingo/common"
 )
 
 // WebSocket client errors
@@ -116,10 +116,10 @@ func (c *WebsocketClient) Connect(ctx context.Context, onError func(error)) erro
 	}
 
 	url := fmt.Sprintf("wss://api.tiingo.com/%s", c.endpoint)
-	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(dialCtx, url, nil)
+	conn, _, err := websocket.Dial(ctx, url, nil)
 	if err != nil {
 		c.mu.Unlock()
 		return fmt.Errorf("failed to connect: %w", err)
@@ -166,6 +166,7 @@ func (c *WebsocketClient) Close() error {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
+		log.Println("timeout waiting for routines to finish, forcing close")
 	}
 
 	// Close the connection
@@ -257,14 +258,18 @@ func (c *WebsocketClient) readLoop() {
 					return
 				default:
 					c.notifyError(fmt.Errorf("error reading message: %w", err))
-					go c.Close()
+
+					if err := c.Close(); err != nil {
+						c.notifyError(fmt.Errorf("error closing connection after read error: %w", err))
+					}
+
 					return
 				}
 			}
 
 			c.updateLastMessageTimestamp()
 
-			var message common.WebSocketMessage
+			var message WebSocketMessage
 			if err := json.Unmarshal(msg, &message); err != nil {
 				c.notifyError(fmt.Errorf("failed to unmarshal message: %w", err))
 				continue
@@ -272,7 +277,7 @@ func (c *WebsocketClient) readLoop() {
 
 			switch message.MessageType {
 			case "I":
-				var conf common.SubscriptionConfirmation
+				var conf SubscriptionConfirmation
 				if err := json.Unmarshal(message.Data, &conf); err != nil {
 					c.notifyError(fmt.Errorf("failed to unmarshal subscription confirmation: %w", err))
 					continue
@@ -315,7 +320,11 @@ func (c *WebsocketClient) healthcheckLoop() {
 			lastHeartbeat := c.getLastMessageTimestamp()
 			if time.Since(lastHeartbeat) > c.config.LivenessTimeout {
 				c.notifyError(errors.New("connection stale: liveness timeout exceeded"))
-				go c.Close()
+
+				if err := c.Close(); err != nil {
+					c.notifyError(fmt.Errorf("error closing stale connection: %w", err))
+				}
+
 				return
 			}
 		}
@@ -326,7 +335,11 @@ func (c *WebsocketClient) healthcheckLoop() {
 func (c *WebsocketClient) subscribe(ticker string, handler func(message []byte, err error)) error {
 	select {
 	case <-c.ctx.Done():
-		return c.ctx.Err()
+		if c.ctx.Err() != nil && c.ctx.Err() != context.Canceled {
+			return c.ctx.Err()
+		}
+
+		return nil
 	default:
 	}
 
@@ -341,7 +354,7 @@ func (c *WebsocketClient) subscribe(ticker string, handler func(message []byte, 
 		return ErrAlreadySubscribed
 	}
 
-	req := common.SubscribeRequest{
+	req := SubscribeRequest{
 		EventName:     "subscribe",
 		Authorization: c.apiKey,
 		EventData: map[string]interface{}{
@@ -462,7 +475,11 @@ func (c *WebsocketClient) SubscribeForexEndpointWithHandler(ticker string, forex
 func (c *WebsocketClient) Unsubscribe(ticker string) error {
 	select {
 	case <-c.ctx.Done():
-		return c.ctx.Err()
+		if c.ctx.Err() != nil && c.ctx.Err() != context.Canceled {
+			return c.ctx.Err()
+		}
+
+		return nil
 	default:
 	}
 
@@ -477,7 +494,7 @@ func (c *WebsocketClient) Unsubscribe(ticker string) error {
 		return fmt.Errorf("not subscribed to %s", ticker)
 	}
 
-	req := common.SubscribeRequest{
+	req := SubscribeRequest{
 		EventName:     "unsubscribe",
 		Authorization: c.apiKey,
 		EventData:     map[string]interface{}{"tickers": []string{ticker}},

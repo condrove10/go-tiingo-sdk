@@ -1,6 +1,9 @@
+[![Go Reference](https://pkg.go.dev/badge/github.com/condrove10/go-tiingo-sdk.svg)](https://pkg.go.dev/github.com/condrove10/go-tiingo-sdk)
+[![Apache 2.0 License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 # Go Tiingo SDK
 
-A Go client for the [Tiingo API](https://api.tiingo.com), providing access to both REST and WebSocket interfaces for stock, forex, and crypto data.
+This is the official Go SDK for the [Tiingo API](https://api.tiingo.com). It provides a convenient and easy-to-use interface for accessing both REST and WebSocket APIs for stock, forex, and crypto data.
 
 ## Features
 
@@ -8,10 +11,12 @@ A Go client for the [Tiingo API](https://api.tiingo.com), providing access to bo
 -   **WebSocket Client**: A robust, auto-reconnecting WebSocket client for real-time data feeds (IEX, Forex, Crypto).
 -   **Flexible Configuration**: Use functional options to configure client behavior.
 -   **Callback-Based**: Asynchronous, non-blocking handling of WebSocket messages using callbacks.
--   **Connection Management**: Automatic reconnection with exponential backoff, and health monitoring via ping/pong checks.
+-   **Connection Management**: Automatic reconnection with exponential backoff, and health monitoring.
 -   **Thread-Safe**: Safe for concurrent use.
 
 ## Installation
+
+To use the SDK in your project, you can use `go get`:
 
 ```sh
 go get github.com/condrove10/go-tiingo-sdk
@@ -19,13 +24,15 @@ go get github.com/condrove10/go-tiingo-sdk
 
 ## Usage
 
+First, you need to get your API key from the [Tiingo website](https://api.tiingo.com).
+
 ### REST Client
 
-The `Do` method provides a generic way to interact with any of the Tiingo REST endpoints, but the SDK also provides helper methods for specific endpoints.
+The REST client provides access to all of Tiingo's REST API endpoints.
 
 #### Example: Fetching End-of-Day Prices
 
-This example fetches daily price data for a ticker.
+This example demonstrates how to fetch daily price data for a specific stock ticker.
 
 ```go
 package main
@@ -35,7 +42,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/condrove10/go-tiingo-sdk/tiingo"
+	"github.com/condrove10/go-tiingo-sdk"
 )
 
 func main() {
@@ -47,22 +54,25 @@ func main() {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
+	// Fetch end-of-day prices for Apple Inc.
 	prices, err := client.GetEndOfDayPrices(context.Background(), "AAPL", &tiingo.EndOfDayPricesOptions{
-		StartDate: "2026-01-01",
+		StartDate: "2023-01-01",
 	})
 	if err != nil {
 		log.Fatalf("Error: %v", err)
 	}
 
-	fmt.Printf("Success: Retrieved %d records\n", len(prices))
+	fmt.Printf("Success: Retrieved %d records for AAPL\n", len(prices))
 }
 ```
 
 ### WebSocket Client
 
-The WebSocket client allows you to subscribe to real-time data feeds.
+The WebSocket client allows you to subscribe to real-time data feeds for stocks (IEX), forex, and crypto.
 
 #### Example: Subscribing to IEX Data
+
+This example shows how to subscribe to real-time IEX data for a stock ticker.
 
 ```go
 package main
@@ -74,7 +84,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/condrove10/go-tiingo-sdk/tiingo"
+	"github.com/condrove10/go-tiingo-sdk"
 )
 
 func main() {
@@ -83,19 +93,19 @@ func main() {
 		log.Fatal("TIINGO_API_KEY environment variable not set")
 	}
 
-	// Create a new client for IEX feed
+	// Create a new client for the IEX feed
 	client := tiingo.NewWebsocketClient(
 		apiKey,
 		tiingo.EndpointTypeIEX,
 		tiingo.WithThresholdLevel(5),
 	)
 
-	// Define error handler for the connection
+	// Define an error handler for the connection
 	onError := func(err error) {
 		log.Printf("Connection Error: %v", err)
 	}
 
-	// Connect
+	// Connect to the WebSocket
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	
@@ -104,7 +114,7 @@ func main() {
 	}
 	defer client.Close()
 
-	// Define subscription handler
+	// Define a subscription handler for the data
 	onData := func(msg []byte, err error) {
 		if err != nil {
 			log.Printf("Subscription error: %v", err)
@@ -113,12 +123,12 @@ func main() {
 		log.Printf("Received data: %s", string(msg))
 	}
 
-	// Subscribe to tickers
+	// Subscribe to the AAPL ticker
 	if err := client.Subscribe("AAPL", onData); err != nil {
 		log.Printf("Failed to subscribe to AAPL: %v", err)
 	}
 
-	// Wait for a signal to gracefully shut down
+	// Wait for a shutdown signal to gracefully close the connection
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
@@ -127,7 +137,9 @@ func main() {
 }
 ```
 
-#### Handling Crypto Data
+#### Example: Handling Crypto Data
+
+This example demonstrates how to subscribe to real-time crypto data.
 
 ```go
 package main
@@ -136,12 +148,17 @@ import (
 	"context"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/condrove10/go-tiingo-sdk/tiingo"
+	"github.com/condrove10/go-tiingo-sdk"
 )
 
 func main() {
 	apiKey := os.Getenv("TIINGO_API_KEY")
+	if apiKey == "" {
+		log.Fatal("TIINGO_API_KEY environment variable not set")
+	}
 
 	// Create a client for the Crypto feed
 	client := tiingo.NewWebsocketClient(
@@ -154,7 +171,9 @@ func main() {
 		log.Printf("Connection Error: %v", err)
 	}
 	
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	
 	if err := client.Connect(ctx, onError); err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}
@@ -172,6 +191,19 @@ func main() {
 		log.Printf("Failed to subscribe: %v", err)
 	}
 
-	// ... wait for shutdown signal
+	// Wait for a shutdown signal to gracefully close the connection
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down...")
 }
 ```
+
+## Contributing
+
+Contributions are welcome! If you find any issues or have suggestions for improvements, please open an issue or create a pull request.
+
+## License
+
+This project is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for more details.
